@@ -1,11 +1,17 @@
 import streamlit as st
-import face_recognition
-import pytesseract
-from PIL import Image
-import numpy as np
-import os
-import tempfile
+try:
+    import cv2
+    import face_recognition
+    import pytesseract
+    from PIL import Image
+    import numpy as np
+    import os
+    import tempfile
+except ImportError as e:
+    st.error(f"Missing required dependencies: {str(e)}")
+    st.stop()
 
+# Rest of your app code...
 # Set up the app
 st.set_page_config(page_title="Person Identifier", layout="wide")
 st.title("🔍 Person Identification Tool")
