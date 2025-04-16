@@ -1,5 +1,4 @@
 import streamlit as st
-import cv2
 import face_recognition
 import pytesseract
 from PIL import Image
@@ -8,107 +7,99 @@ import os
 import tempfile
 
 # Set up the app
-st.set_page_config(page_title="Advanced Image Analysis", layout="wide")
-st.title("Image Profile Analyzer")
-st.warning("Note: This local version cannot access social media profiles. It can only analyze images directly.")
+st.set_page_config(page_title="Person Identifier", layout="wide")
+st.title("🔍 Person Identification Tool")
+st.markdown("""
+- **Step 1:** Upload an image
+- **Step 2:** The system checks against known faces
+- **Step 3:** Use Google Reverse Image Search (manual) for more details
+""")
 
-# Initialize known faces (you would need to pre-load these)
-known_faces = {
-    # Format: "name": [encoding]
-    # Example (you'd need to generate these):
-    # "John Doe": [face_recognition.face_encodings(face_image)[0]]
-}
+# ====== KNOWN DATASET (Pre-load your 10 people) ======
+known_faces = {}  # Format: {"Name": face_encoding}
 
-# Sidebar controls
-with st.sidebar:
-    st.header("Settings")
-    use_ocr = st.checkbox("Extract Text (OCR)", True)
-    use_face_rec = st.checkbox("Face Recognition", True)
-    confidence = st.slider("Confidence Threshold", 0.1, 1.0, 0.6)
+def load_known_faces():
+    """Load your 10 people here"""
+    # Example (replace with your dataset):
+    known_person_img = face_recognition.load_image_file("person1.jpg")
+    known_faces["John Doe"] = face_recognition.face_encodings(known_person_img)[0]
 
+load_known_faces()  # Initialize dataset
+
+# ====== GOOGLE REVERSE IMAGE SEARCH (Manual) ======
+def google_reverse_search(image_path):
+    """Helper function to guide manual Google search"""
+    st.warning("No API used. Manually upload to Google Images:")
+    st.markdown(f"""
+    1. Go to [Google Images](https://images.google.com)
+    2. Click the camera icon 📷
+    3. Upload the image
+    4. Check results for names/social profiles
+    """)
+    st.image(image_path, caption="Upload this image to Google", width=300)
+
+# ====== OCR (Extract Text) ======
 def extract_text(image):
-    """Extract text using OCR"""
     text = pytesseract.image_to_string(image)
-    return text if text.strip() else "No text found"
+    return text if text.strip() else None
 
-def recognize_face(face_image):
-    """Match against known faces"""
-    face_encodings = face_recognition.face_encodings(face_image)
-    if not face_encodings:
+# ====== FACE MATCHING ======
+def recognize_face(uploaded_image):
+    img = face_recognition.load_image_file(uploaded_image)
+    face_locations = face_recognition.face_locations(img)
+    
+    if not face_locations:
         return None
     
-    for name, encoding in known_faces.items():
-        matches = face_recognition.compare_faces([encoding], face_encodings[0], tolerance=0.6)
-        if matches[0]:
+    uploaded_encoding = face_recognition.face_encodings(img, face_locations)[0]
+    
+    for name, known_encoding in known_faces.items():
+        match = face_recognition.compare_faces([known_encoding], uploaded_encoding, tolerance=0.5)
+        if match[0]:
             return name
     return None
 
+# ====== MAIN ANALYSIS ======
 def analyze_image(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
         tmp_file.write(uploaded_file.read())
         tmp_path = tmp_file.name
     
-    image = cv2.imread(tmp_path)
-    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    pil_image = Image.fromarray(rgb_image)
+    # Check if face matches known dataset
+    matched_name = recognize_face(tmp_path)
     
-    col1, col2 = st.columns(2)
+    if matched_name:
+        st.success(f"✅ **Match Found:** {matched_name}")
+        st.markdown(f"""
+        **Possible Profiles:**
+        - LinkedIn: `https://www.linkedin.com/search/results/all/?keywords={matched_name}`
+        - Facebook: `https://www.facebook.com/search/top?q={matched_name}`
+        """)
+    else:
+        st.warning("❌ No match in local database")
+        st.info("Try Google Reverse Image Search for more info:")
+        google_reverse_search(tmp_path)
     
-    with col1:
-        st.image(pil_image, caption="Original Image", use_column_width=True)
-    
-    results = {}
-    
-    # Face detection and recognition
-    if use_face_rec:
-        face_locations = face_recognition.face_locations(rgb_image)
-        for i, (top, right, bottom, left) in enumerate(face_locations):
-            face_image = rgb_image[top:bottom, left:right]
-            name = recognize_face(face_image)
-            
-            if name:
-                results[f"Face {i+1}"] = {"name": name, "type": "known"}
-            else:
-                results[f"Face {i+1}"] = {"type": "unknown"}
-    
-    # OCR text extraction
-    if use_ocr:
-        text = extract_text(pil_image)
-        results["extracted_text"] = text
-    
-    # Display results
-    with col2:
-        st.subheader("Analysis Results")
-        
-        if "extracted_text" in results:
-            st.write("**Extracted Text:**")
-            st.code(results["extracted_text"])
-        
-        for face_id, data in results.items():
-            if "name" in data:
-                st.success(f"✅ {face_id}: Recognized as {data['name']}")
-                # Simulate finding profiles (in a real app you'd need API access)
-                st.write(f"Possible profiles for {data['name']}:")
-                st.markdown(f"""
-                - LinkedIn: `https://linkedin.com/search?q={data['name']}`
-                - Facebook: `https://facebook.com/search?q={data['name']}`
-                """)
-            elif face_id.startswith("Face"):
-                st.warning(f"⚠️ {face_id}: Unknown person")
+    # Extract text (OCR)
+    extracted_text = extract_text(Image.open(tmp_path))
+    if extracted_text:
+        st.markdown("**Extracted Text (OCR):**")
+        st.code(extracted_text)
     
     os.unlink(tmp_path)
 
-# File uploader
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+# ====== FILE UPLOAD ======
+uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
     analyze_image(uploaded_file)
 else:
     st.info("Please upload an image to analyze")
 
+st.markdown("---")
+st.subheader("How to Use:")
 st.markdown("""
-### Important Notes:
-1. To recognize specific people, you must first add their face encodings to the `known_faces` dictionary
-2. Social media links are simulated - real lookup would require API access
-3. Text extraction only works if the name appears visibly in the image
+1. **For your 10 known people**: Add their images in the code under `load_known_faces()`
+2. **For unknown faces**: Manually use Google Reverse Image Search
+3. **For text extraction**: OCR will detect visible names
 """)
